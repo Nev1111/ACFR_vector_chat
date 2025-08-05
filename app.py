@@ -1,14 +1,13 @@
 import os, streamlit as st
 from dotenv import load_dotenv
 from extract_pdf import extract_text_from_pdf
-from langchain.prompts import PromptTemplate
-
 
 # LangChain + vector store imports
 from langchain_community.vectorstores import DocArrayInMemorySearch
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain.chains import RetrievalQA
+from langchain.prompts import PromptTemplate
 
 # ---------- 1. Load your OpenAI key ----------
 load_dotenv()
@@ -30,8 +29,7 @@ embeddings  = OpenAIEmbeddings()  # uses your key internally
 vectorstore = DocArrayInMemorySearch.from_documents(docs, embeddings)
 retriever   = vectorstore.as_retriever(search_kwargs={"k": 4})
 
-# ---------- 4. Set up the QA chain ----------
-# ---------- 4. Set up the QA chain with a strict prompt ----------
+# ---------- 4. Set up the QA chain with strict prompt ----------
 custom_prompt = PromptTemplate.from_template("""
 You are a helpful assistant answering questions about the TRS ACFR 2024 report.
 Use only the information provided in the context below.
@@ -50,7 +48,6 @@ qa_chain = RetrievalQA.from_chain_type(
     return_source_documents=True,
     chain_type_kwargs={"prompt": custom_prompt}
 )
-
 
 # ---------- 5. Streamlit interface ----------
 st.set_page_config(
@@ -80,14 +77,12 @@ if not st.session_state.history:
         """
     )
 
-# --- chat input and display remain unchanged ---
+# --- chat input and response ---
 user_q = st.chat_input("Type your question…")
 if user_q:
-    # Perform similarity search with relevance scores
+    # Search with score filtering
     search_results = vectorstore.similarity_search_with_score(user_q, k=4)
-
-    # Filter out low-relevance documents
-    threshold = 0.75
+    threshold = 0.65
     relevant_docs = [doc for doc, score in search_results if score >= threshold]
 
     if not relevant_docs:
@@ -97,18 +92,14 @@ if user_q:
         )
         st.session_state.history.append((user_q, fallback_response))
 
-        # Optional: log off-topic queries
+        # Optional: log unrelated questions
         with open("unanswered_questions.txt", "a") as f:
             f.write(user_q + "\n")
-
     else:
-        # Let the LLM answer using the standard retrieval chain
         result = qa_chain(user_q)
         st.session_state.history.append((user_q, result["result"]))
 
-
-
+# display chat history
 for user_msg, bot_msg in st.session_state.history:
     st.chat_message("user").markdown(user_msg)
     st.chat_message("assistant").markdown(bot_msg)
-
